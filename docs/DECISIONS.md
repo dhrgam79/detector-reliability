@@ -176,6 +176,24 @@ Findings (VRU, severity 5, paired 95% CI vs clean):
 | D70 | `reliability.csv` gains a `calibrated` column; Figure 3 becomes a 2x3 grid (rows: raw / after scaling) | Before/after on the same detections, same bins |
 | D71 | Figure 2 = VRU D-ECE@0.3 vs severity, panels "before" / "after (T = ...)", same colours as Figure 1 | Operating-point calibration of the headline group |
 
+## 2026-11-16 — Step 10 results (temperature scaling)
+
+T = 1.043 (3145 driving-class detections on the clean calibration split, 1031 TP; NLL 0.3677 -> 0.3674).
+Effect on D-ECE is negligible everywhere: VRU gain at the 0.3 threshold +0.002 to +0.003 (CIs exclude 0),
+and slightly *negative* at 0.05 (-0.002 to -0.005).
+
+Why: the clean detector is overconfident at **every** confidence level, including below 0.5
+(lowest bin: 2% TP at mean confidence 7%). A temperature on the logit is symmetric around 0.5: T > 1
+lowers scores above 0.5 (good) but raises scores below 0.5 (bad). The BCE fit balances the two -> T ~ 1.
+The miscalibration is an *offset*, which needs a bias term (Platt: sigmoid(a z + b)) or a non-parametric
+map, both out of v1 scope (brief §3).
+
+| # | Decision | Rationale |
+|---|---|---|
+| D72 | Report temperature scaling as **ineffective, with the structural reason**, not as a fix | Honest result; the README must not imply calibration was recovered |
+| D73 | Keep the full-sweep `run_info.json` (40.2 min, all 27 conditions inferred) as the runtime record; the Step 10 run was cache-only (6.0 min) | The README runtime claim must describe a run that actually did inference; superseded by the final fresh-clone run in Step 11 |
+| D74 | Platt scaling proposed as the first v1.1 item (needs the author's approval: scope change) | Smallest change that can correct an offset; still fit on clean data, so it cannot address corruption-specific overconfidence |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.
