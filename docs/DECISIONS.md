@@ -194,6 +194,15 @@ map, both out of v1 scope (brief §3).
 | D73 | Keep the full-sweep `run_info.json` (40.2 min, all 27 conditions inferred) as the runtime record; the Step 10 run was cache-only (6.0 min) | The README runtime claim must describe a run that actually did inference; superseded by the final fresh-clone run in Step 11 |
 | D74 | Platt scaling proposed as the first v1.1 item (needs the author's approval: scope change) | Smallest change that can correct an offset; still fit on clean data, so it cannot address corruption-specific overconfidence |
 
+## 2026-11-16 — Step 11 (README, notebook)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D75 | README headline figure = the before/after reliability grid (Figure 3) | It shows both failure modes and the null effect of temperature scaling in one image |
+| D76 | Every README number was extracted from the committed CSV/JSON by script, not retyped; the person share was corrected to 72% for the 750-image split | Brief §10: never invent results |
+| D77 | README frames results as two hazardous behaviours (confident errors vs silent misses) and states that temperature scaling did not help, with the reason | D58, D72 |
+| D78 | Colab notebook runs the full pipeline from a fresh clone; the Drive cache is optional and off by default | Definition of done requires a fresh-clone end-to-end run on a T4 |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.
