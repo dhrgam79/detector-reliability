@@ -1,0 +1,62 @@
+# All experiment parameters live here. Code must not hard-code any of these values.
+
+seed: 42
+
+paths:
+  data_dir: data/coco               # val2017/ and annotations/ go here (not committed)
+  annotations: annotations/instances_val2017.json   # relative to data_dir
+  images: val2017                   # relative to data_dir
+  results_dir: results
+  cache_dir: results/cache          # detections cached as {corruption}_{severity}.pt
+  figures_dir: results/figures
+
+data:
+  subset_size: 500
+  calibration_size: 250
+  evaluation_size: 250
+  # Primary analysis: driving-relevant COCO classes (COCO category ids).
+  # Images are sampled only from val2017 images containing >= 1 of these classes.
+  driving_classes:
+    person: 1
+    bicycle: 2
+    car: 3
+    motorcycle: 4
+    bus: 6
+    truck: 8
+    traffic light: 10
+    stop sign: 13
+  # Secondary analysis: all 80 COCO classes on the same images.
+  report_all_classes: true
+
+corruptions:
+  names: [fog, snow, motion_blur, gaussian_noise, brightness]
+  severities: [1, 2, 3, 4, 5]       # severity 0 (clean) is always evaluated in addition
+
+model:
+  name: fasterrcnn_resnet50_fpn_v2
+  weights: DEFAULT                  # torchvision COCO_V1 weights
+  score_threshold: 0.05             # kept-detection threshold at inference
+  detections_per_image: 100
+  batch_size: 4
+  device: auto                      # auto | cpu | cuda
+
+matching:
+  iou_threshold: 0.5
+
+metrics:
+  dece_bins: 10
+  # D-ECE is reported at each operating point: detections below the threshold are dropped
+  # before binning. 0.05 = full confidence range; 0.3 = closer to a deployed operating point.
+  dece_score_thresholds: [0.05, 0.3]
+  bootstrap:
+    n_resamples: 1000               # image-level bootstrap
+    confidence_level: 0.95
+
+calibration:
+  method: confidence_logit          # p' = sigmoid(logit(p) / T), single scalar T
+  temperature_bounds: [0.05, 20.0]
+  logit_eps: 1.0e-6                 # clip p to [eps, 1 - eps] before logit
+
+plots:
+  dpi: 150
+  format: png

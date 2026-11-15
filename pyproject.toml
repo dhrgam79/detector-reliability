@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "detrel"
+version = "0.1.0"
+description = "Object-detector accuracy and confidence calibration under camera corruptions, interpreted in SOTIF terms."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Dhrgam AL Kafaf" }]
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1",
+    "torchvision>=0.16",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pillow>=9.5",
+    "pyyaml>=6.0",
+    "matplotlib>=3.7",
+    "pycocotools>=2.0.7",
+    "imagecorruptions>=1.1.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.6"]
+
+[project.scripts]
+detrel = "detrel.cli:main"
+
+[project.urls]
+Repository = "https://github.com/dhrgam79/detector-reliability"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "D", "N", "SIM"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+"scripts/*" = ["D"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
