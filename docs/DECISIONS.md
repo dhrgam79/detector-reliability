@@ -72,6 +72,20 @@ stop sign 4. Person = 74% of instances in both halves.
 | D34 | Sanity reference: torchvision's published 46.7 mAP (all classes, full val2017) logged next to our all-class baseline | Large deviation = pipeline bug (e.g., box format, label mapping) |
 | D35 | Label ids verified offline against weights metadata (index = COCO category id) | No remapping layer needed; test guards it |
 
+## 2026-11-15 — First real run (Colab T4, fp32)
+
+Clean all-class mAP 0.444 (eval) / 0.481 (calib) vs torchvision 0.467 -> pipeline validated.
+Throughput 4.7 img/s clean, 4.3 img/s brightness-5 -> GPU-bound; CPU corruption overhead ~8%.
+Driving 8-class mAP differed by 0.167 between the two random halves (infrastructure 0.633 vs
+0.235); infrastructure mAP *rose* under brightness-5 (0.235 -> 0.299) -> noise, 58 GT.
+
+| # | Decision | Rationale |
+|---|---|---|
+| D36 | Headline = **VRU mAP** + all-80 mAP; 8-class driving mAP demoted to secondary (with CI). Supersedes D25's headline | 8-class mAP swung 17 points between random halves; VRU (Δ 0.038) and all-80 (Δ 0.037) are stable |
+| D37 | Runtime budget relaxed **30 -> 45 min** on T4 (brief §1, §9 updated accordingly) | Author's call: spend budget on a larger evaluation set to narrow CIs |
+| D38 | Image download parallelised (16 threads) | Sequential took 10 min on Colab |
+| D39 | Eval-set size rule: if AMP >= 1.6x faster and every mAP row moves < 0.005 -> AMP + 750 eval images; else fp32 + 400 | Maximise eval size within 45 min without letting fp16 change results; prefix-stable split keeps existing images |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.
