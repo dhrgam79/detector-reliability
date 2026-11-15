@@ -8,4 +8,4 @@ import sys
 from detrel.cli import main
 
 if __name__ == "__main__":
-    raise SystemExit(main([*sys.argv[1:], "sweep"]))
+    raise SystemExit(main([*sys.argv[1:], "run-all"]))

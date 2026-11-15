@@ -12,7 +12,7 @@ from typing import Any
 
 import torch
 
-from detrel import data, evaluate, metrics, model
+from detrel import data, evaluate, metrics, model, plots
 from detrel.config import load_config, resolve_path
 from detrel.corruptions import CORRUPTION_NAMES
 
@@ -220,6 +220,39 @@ def sweep(cfg: dict[str, Any], args: argparse.Namespace) -> list[dict[str, Any]]
     return summary
 
 
+def make_plots(cfg: dict[str, Any], args: argparse.Namespace) -> list[Any]:
+    """Render figures from the committed CSVs (no GPU, no data needed).
+
+    Args:
+        cfg: Validated config.
+        args: Parsed CLI arguments (unused).
+
+    Returns:
+        Paths of the written figures.
+    """
+    del args
+    paths = cfg["paths"]
+    run_info = resolve_path(paths["run_info"])
+    n_images = (
+        json.loads(run_info.read_text(encoding="utf-8")).get("n_eval_images")
+        if run_info.exists()
+        else None
+    )
+    return plots.make_figures(
+        cfg,
+        resolve_path(paths["summary_csv"]),
+        resolve_path(paths["reliability_csv"]),
+        resolve_path(paths["figures_dir"]),
+        n_images,
+    )
+
+
+def run_all(cfg: dict[str, Any], args: argparse.Namespace) -> None:
+    """Everything, in order: sweep (data, inference, metrics) then figures."""
+    sweep(cfg, args)
+    make_plots(cfg, args)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the ``detrel`` command-line interface.
 
@@ -236,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("prepare-data", help="Download data and create/verify the split manifest.")
     sub.add_parser("baseline", help="Clean inference on both splits and an mAP table.")
     sub.add_parser("sweep", help="All conditions: inference (cached), metrics, summary.csv.")
+    sub.add_parser("plots", help="Figures from the result CSVs (no GPU or data needed).")
+    sub.add_parser("run-all", help="sweep, then plots.")
     p_infer = sub.add_parser("infer", help="Run one split x condition (cached).")
     p_infer.add_argument("--split", choices=SPLITS, default="evaluation")
     p_infer.add_argument("--corruption", choices=CORRUPTION_NAMES, default=None)
@@ -252,6 +287,10 @@ def main(argv: list[str] | None = None) -> int:
         baseline(cfg, args)
     elif args.command == "sweep":
         sweep(cfg, args)
+    elif args.command == "plots":
+        make_plots(cfg, args)
+    elif args.command == "run-all":
+        run_all(cfg, args)
     else:
         infer(cfg, args)
     return 0

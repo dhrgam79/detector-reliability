@@ -149,6 +149,15 @@ Findings (VRU, severity 5, paired 95% CI vs clean):
 | D58 | README must **not** claim "corruption -> overconfidence" in general; report the two failure modes separately (confident errors vs silent misses) | The data contradict the brief §2/§8 framing for fog and brightness |
 | D59 | Commit `summary.csv`, `reliability.csv`, `run_info.json` from this run | All README numbers must come from these files |
 
+## 2026-11-16 — Step 8 (figures)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D60 | Figure 1 = **mAP@0.5** vs severity (brief §6.5), small multiples **VRU / vehicle**, 95% bootstrap bands | IoU 0.5 is the same TP definition D-ECE uses; groups per D36 |
+| D61 | Figure 3 = reliability diagrams for **clean, gaussian-noise-5 (worst), fog-5 (contrast)**, VRU, threshold 0.05 (bins >= 0.3 equal the 0.3 operating point), annotated with D-ECE at both thresholds + CI | Brief said "fog-5 or worst case"; fog-5 is where calibration *improves*, so both are shown to expose the two failure modes |
+| D62 | Figures are rendered from committed CSVs only (`detrel plots`), opaque white background, validated categorical palette in fixed order; the 3 low-contrast hues get secondary encoding (distinct markers, direct end labels, legend) | Reproducible without GPU/data; readable in GitHub light and dark themes; palette validator WARN on contrast requires relief |
+| D63 | `run-all` = sweep + plots; `scripts/run_all.py` calls it | One command reproduces tables and figures (brief §9) |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.
