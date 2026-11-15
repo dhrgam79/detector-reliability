@@ -31,6 +31,21 @@
 - 102 tests pass; vendored module and `corruptions.py` at 100% line coverage.
 - CPU cost ~0.06 s/image/condition at 640x480; 250 images x 25 conditions ~6.4 min on a fast CPU (expect ~2x on Colab's 2 vCPUs).
 
+## 2026-11-15 — Step 3 (data)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D17 | Eligible image = >= 1 **non-crowd** instance of a driving class | A crowd-only "person" region is not a detectable object; would inflate eligibility |
+| D18 | Candidates sorted before a single `RandomState(seed).permutation`; first 250 -> calibration, next 250 -> evaluation | Independent of annotation-file order; stable across NumPy versions |
+| D19 | Split written to `results/split.json` and **committed**; every run recomputes and aborts on any mismatch (ids, seed, sizes, classes, annotation SHA-256) | Turns "the subset is fixed" from a claim into a checked invariant |
+| D20 | Download only the 500 subset images + the annotation zip (~250 MB, only `instances_val2017.json` kept), not the 778 MB val2017 zip | Saves ~10 min on Colab |
+| D21 | Split is random, not stratified by class; per-class counts logged and stored in manifest | Stratifying multi-label images is messy; counts let us flag rare classes (stop sign, bus) honestly |
+| D22 | `CocoSubset` keeps **all** GT (all classes + crowd flags); class filtering happens at metric time | Same loader serves primary (driving) and secondary (all-80) analyses |
+| D23 | `tests/__init__.py` added so test modules can share fixtures | `test_cli` reuses the synthetic COCO builder |
+
+### Open question for Step 5
+- How to treat detections that overlap **crowd** GT in D-ECE. COCO mAP ignores them; counting them as FP would penalise correct detections. Proposal: ignore them, matching pycocotools.
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.
