@@ -86,6 +86,17 @@ Driving 8-class mAP differed by 0.167 between the two random halves (infrastruct
 | D38 | Image download parallelised (16 threads) | Sequential took 10 min on Colab |
 | D39 | Eval-set size rule: if AMP >= 1.6x faster and every mAP row moves < 0.005 -> AMP + 750 eval images; else fp32 + 400 | Maximise eval size within 45 min without letting fp16 change results; prefix-stable split keeps existing images |
 
+## 2026-11-15 — AMP test (Colab T4)
+
+fp16 autocast: 12.3–12.8 img/s vs 4.6–4.8 fp32 (2.7x). mAP changes <= 0.005 on all rows;
+mAP50 changes <= 0.002 except **VRU calibration mAP50 0.795 -> 0.786 (0.009)**.
+
+| # | Decision | Rationale |
+|---|---|---|
+| D40 | **Adopt AMP despite D39's rule failing on one row** (VRU calib mAP50, 0.009 > 0.005). Breach recorded here, not hidden by moving the threshold | 0.009 is 5–20x below observed between-half sampling noise (0.04–0.17); precision is identical across all conditions, so relative degradation is unaffected; the 2.7x speed buys a 3x larger evaluation set (CI width ~0.58x) |
+| D41 | Subset 500 -> 1000: calibration 250 (unchanged), evaluation 250 -> 750 | Prefix-stable selection: calibration identical and previous 250 eval images retained (tested) |
+| D42 | README must state: all inference in fp16 autocast; fp32 vs fp16 differences from this test | Disclosure |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.

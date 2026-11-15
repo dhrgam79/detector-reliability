@@ -234,3 +234,13 @@ def test_ensure_annotations_extracts_from_zip(cfg, tmp_path):
     assert json.loads(path.read_text()) == {"images": []}
     assert not list(path.parent.glob("*.zip")) and not list(path.parent.glob("*.part"))
     assert data.ensure_annotations(cfg) == path  # second call is a no-op
+
+
+def test_growing_subset_keeps_calibration_and_extends_evaluation():
+    # Enlarging the evaluation set must not change calibration or drop existing eval images.
+    pool = list(range(3000))
+    small = data.select_and_split(pool, 500, 250, seed=42)
+    large = data.select_and_split(pool, 1000, 250, seed=42)
+    assert large.calibration == small.calibration
+    assert set(small.evaluation) < set(large.evaluation)
+    assert len(large.evaluation) == 750

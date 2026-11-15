@@ -12,7 +12,7 @@ def test_package_imports():
 
 def test_default_config_loads_and_validates():
     cfg = load_config()
-    assert cfg["data"]["subset_size"] == 500
+    assert cfg["data"]["subset_size"] == 1000
     assert cfg["model"]["score_threshold"] == 0.05
 
 

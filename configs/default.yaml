@@ -16,9 +16,9 @@ data:
   annotations_member: annotations/instances_val2017.json   # file extracted from the zip
   images_base_url: http://images.cocodataset.org/val2017
   download_workers: 16              # parallel image downloads
-  subset_size: 500
+  subset_size: 1000
   calibration_size: 250
-  evaluation_size: 250
+  evaluation_size: 750
   # Primary analysis: driving-relevant COCO classes (COCO category ids).
   # Images are sampled only from val2017 images containing >= 1 of these classes.
   driving_classes:
@@ -53,7 +53,7 @@ model:
   batch_size: 4
   num_workers: 2                    # DataLoader workers: corrupt images on CPU while GPU infers
   device: auto                      # auto | cpu | cuda
-  amp: false                        # fp16 autocast on CUDA; faster but scores differ slightly
+  amp: true                         # fp16 autocast on CUDA; faster but scores differ slightly
   reference_map_val2017: 46.7       # torchvision-published box mAP (all classes, full val2017)
 
 matching:
