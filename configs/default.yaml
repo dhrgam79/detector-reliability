@@ -50,7 +50,10 @@ model:
   score_threshold: 0.05             # kept-detection threshold at inference
   detections_per_image: 100
   batch_size: 4
+  num_workers: 2                    # DataLoader workers: corrupt images on CPU while GPU infers
   device: auto                      # auto | cpu | cuda
+  amp: false                        # fp16 autocast on CUDA; faster but scores differ slightly
+  reference_map_val2017: 46.7       # torchvision-published box mAP (all classes, full val2017)
 
 matching:
   iou_threshold: 0.5

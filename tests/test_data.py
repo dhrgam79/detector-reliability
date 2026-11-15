@@ -35,15 +35,24 @@ def make_coco(n_images: int = 40) -> dict:
                     "image_id": i,
                     "category_id": cat,
                     "bbox": [2, 3, 10, 20],
+                    "area": 200.0,
                     "iscrowd": crowd,
                 }
             )
             aid += 1
     # Annotation referring to an image that does not exist must be ignored.
     anns.append(
-        {"id": aid, "image_id": 999, "category_id": CAR, "bbox": [0, 0, 1, 1], "iscrowd": 0}
+        {
+            "id": aid,
+            "image_id": 999,
+            "category_id": CAR,
+            "bbox": [0, 0, 1, 1],
+            "area": 1.0,
+            "iscrowd": 0,
+        }
     )
-    return {"images": images, "annotations": anns, "categories": []}
+    cats = [{"id": c, "name": str(c)} for c in (PERSON, CAR, DOG)]
+    return {"images": images, "annotations": anns, "categories": cats}
 
 
 @pytest.fixture

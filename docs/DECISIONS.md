@@ -46,6 +46,32 @@
 ### Open question for Step 5
 - How to treat detections that overlap **crowd** GT in D-ECE. COCO mAP ignores them; counting them as FP would penalise correct detections. Proposal: ignore them, matching pycocotools.
 
+## 2026-11-15 — Split results and class groups
+
+Real split (Colab, annotations sha256 `e8c7f790…`): 3028 eligible images. Evaluation GT
+instances: person 960, car 182, traffic light 54, truck 31, bicycle 25, motorcycle 20, bus 20,
+stop sign 4. Person = 74% of instances in both halves.
+
+| # | Decision | Rationale |
+|---|---|---|
+| D24 | Report by safety-relevant group: **VRU** (person, bicycle, motorcycle; 1005 eval GT), **vehicle** (car, bus, truck; 233), **infrastructure** (traffic light, stop sign; 58) | Per-class results for rare classes are noise; groups map to SOTIF hazard categories |
+| D25 | Headline = standard COCO mAP over 8 classes with bootstrap CI, explicitly labelled class-averaged; D-ECE overall + per VRU/vehicle group | mAP weights stop sign (4 GT) equal to person (960); D-ECE is detection-weighted (~74% person). Readers must know which population each number describes |
+| D26 | `min_instances_for_claim: 100`; groups below it reported but flagged; README gets an "Evidence sufficiency" table | SOTIF-style argument about evidence sufficiency; infrastructure (58) is flagged |
+| D27 | Evaluation-set size revisited after Step 4 timing (candidate 750–1000) | Narrower CIs for VRU if the 30-min budget allows |
+
+## 2026-11-15 — Step 4 (model + inference + cache)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D28 | Store post-NMS `boxes, labels, scores` only; no logits | torchvision applies softmax + per-class NMS inside `roi_heads`; exposing the kept detection's logit needs patching internals. Brief §6.4 default path (score-based) |
+| D29 | Cache path `cache/{split}/{condition}.pt` (brief said `{corruption}_{severity}.pt`) | Calibration split is also cached (clean); split must be in the key |
+| D30 | Cache stores metadata (model, weights, thresholds, AMP, seed, split, SHA-256 of image ids, condition); mismatch -> warn and recompute | Prevents silently reusing detections from a different config |
+| D31 | Corruption runs in DataLoader workers; per-image seed makes output independent of worker count / batch size (tested) | Overlaps CPU corruption with GPU inference for the 30-min budget |
+| D32 | `amp: false` default | fp16 changes scores slightly; enable only if T4 timing requires it, and document |
+| D33 | mAP wrapper (pycocotools, unchanged protocol) pulled forward from Step 6; pycocotools' `-1` (no GT) mapped to `nan`, not 0 | Step 4 needs a baseline number; `nan` avoids silently averaging an undefined value as zero |
+| D34 | Sanity reference: torchvision's published 46.7 mAP (all classes, full val2017) logged next to our all-class baseline | Large deviation = pipeline bug (e.g., box format, label mapping) |
+| D35 | Label ids verified offline against weights metadata (index = COCO category id) | No remapping layer needed; test guards it |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.

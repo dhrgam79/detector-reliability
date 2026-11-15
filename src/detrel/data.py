@@ -314,7 +314,7 @@ class CocoSubset:
         """Load image ``idx`` and its ground truth."""
         image_id = self.image_ids[idx]
         with Image.open(self.image_dir / self._files[image_id]) as im:
-            image = np.asarray(im.convert("RGB"), dtype=np.uint8)
+            image = np.array(im.convert("RGB"), dtype=np.uint8)  # writable copy
         anns = self._anns[image_id]
         xywh = np.array([a["bbox"] for a in anns], dtype=np.float32).reshape(-1, 4)
         boxes = np.concatenate([xywh[:, :2], xywh[:, :2] + xywh[:, 2:]], axis=1)
