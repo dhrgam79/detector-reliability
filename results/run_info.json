@@ -1,0 +1,49 @@
+{
+ "finished_utc": "2026-11-15T20:54:39+00:00",
+ "seconds": {
+  "data": 1.1,
+  "inference": 2079.6,
+  "metrics": 333.2,
+  "total": 2413.9
+ },
+ "conditions_inferred": [
+  "calibration/clean",
+  "evaluation/clean",
+  "evaluation/fog_1",
+  "evaluation/fog_2",
+  "evaluation/fog_3",
+  "evaluation/fog_4",
+  "evaluation/fog_5",
+  "evaluation/snow_1",
+  "evaluation/snow_2",
+  "evaluation/snow_3",
+  "evaluation/snow_4",
+  "evaluation/snow_5",
+  "evaluation/motion_blur_1",
+  "evaluation/motion_blur_2",
+  "evaluation/motion_blur_3",
+  "evaluation/motion_blur_4",
+  "evaluation/motion_blur_5",
+  "evaluation/gaussian_noise_1",
+  "evaluation/gaussian_noise_2",
+  "evaluation/gaussian_noise_3",
+  "evaluation/gaussian_noise_4",
+  "evaluation/gaussian_noise_5",
+  "evaluation/brightness_1",
+  "evaluation/brightness_2",
+  "evaluation/brightness_3",
+  "evaluation/brightness_4",
+  "evaluation/brightness_5"
+ ],
+ "conditions_total": 27,
+ "n_eval_images": 750,
+ "bootstrap_resamples": 1000,
+ "device": "Tesla T4",
+ "amp": true,
+ "versions": {
+  "python": "3.13.16",
+  "torch": "2.14.1+cu130",
+  "torchvision": "0.29.1+cu130",
+  "numpy": "2.4.6"
+ }
+}

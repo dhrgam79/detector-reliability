@@ -129,6 +129,26 @@ Estimated metric cost per condition on Colab: ~12 s -> ~5 min for 26 conditions;
 | D56 | `run_info.json` records timings (data / inference / metrics), which conditions were actually inferred vs cached, GPU, AMP, versions | Backs the README runtime claim honestly (cached runs are visible) |
 | D57 | Calibration-split clean inference runs inside the sweep | Needed in step 9; its cost belongs in the measured runtime |
 
+## 2026-11-16 — First full sweep (Colab T4, AMP, 750 eval images)
+
+Runtime 40.2 min (inference 34.7, metrics 5.6, data 0.0 because images were already on Drive).
+Fresh-machine estimate ~43 min (+pip, annotations, 1000 image downloads, weights): under 45, thin margin.
+
+Findings (VRU, severity 5, paired 95% CI vs clean):
+- All corruptions lower VRU mAP: noise -0.393, motion blur -0.383, snow -0.247, brightness -0.127, fog -0.109.
+- **Calibration does not degrade uniformly.** D-ECE@0.3 rises for noise (+0.193 [+0.171, +0.214])
+  and motion blur (+0.109), is unchanged for snow (CI spans 0), and **falls** for fog (-0.031) and
+  brightness (-0.036).
+- The clean model is already overconfident (precision < confidence in every bin).
+- Interpretation: under fog/brightness the detector loses objects (recall) but what it still reports
+  is *less* overconfident; D-ECE is precision-based and blind to misses. Under noise/blur,
+  high-confidence detections become wrong (VRU top bin: precision 0.78 at conf 0.97 for noise-5).
+
+| # | Decision | Rationale |
+|---|---|---|
+| D58 | README must **not** claim "corruption -> overconfidence" in general; report the two failure modes separately (confident errors vs silent misses) | The data contradict the brief §2/§8 framing for fog and brightness |
+| D59 | Commit `summary.csv`, `reliability.csv`, `run_info.json` from this run | All README numbers must come from these files |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.
