@@ -106,6 +106,19 @@ mAP50 changes <= 0.002 except **VRU calibration mAP50 0.795 -> 0.786 (0.009)**.
 | D45 | `coco_map` rejects annotation id <= 0 | Found via D44: pycocotools stores the matched GT *id* and treats 0 as unmatched, so an id-0 GT silently becomes unmatchable and mAP is wrong. Real COCO ids start at 1; synthetic test data started at 0 and was fixed |
 | D46 | `data.ground_truth()` extracts GT without loading pixels; `CocoSubset` reuses it | Matching/metrics need GT for 1000 images without decoding images |
 
+## 2026-11-15 — Step 6 (metrics)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D47 | D-ECE bins: 10 equal-width over **[0, 1]** at both thresholds (at 0.3, bins below 0.3 are empty) | Brief §6.3 as written; keeps bins identical across thresholds so reliability diagrams are comparable |
+| D48 | D-ECE computed as `sum_k abs(sum_{i in k} w_i (tp_i - s_i)) / sum_i w_i` | Algebraically identical to the brief's formula; supports bootstrap weights; tested against hand-computed values and the brief's two unit cases |
+| D49 | Bootstrap = image-level multinomial **weights**, seeded from config; **same weights for every condition** | No data copies; paired resampling gives tighter CIs on clean-vs-corrupted *differences* |
+| D50 | `MapEvaluator`: pycocotools `evaluate` once, then a weighted reimplementation of `accumulate` | 1000 pycocotools runs per condition is infeasible. Verified exact (1e-12) vs pycocotools with unit weights, and vs pycocotools on a dataset with images physically duplicated |
+| D51 | **Bootstrap CIs only for the 8 driving classes** (groups + 8-class mAP); all-80 mAP reported as point estimate | Benchmark at 750 images: all-80 bootstrap 17 s/condition vs 3.8 s for 8 classes; ~20 min extra on Colab would break the 45-min budget. All-80 is only for comparability with published numbers |
+| D52 | D-ECE bootstrap vectorised (per-image per-bin sums, one matrix product for all resamples) | 6 D-ECE rows x 1000 resamples: 0.02 s |
+
+Estimated metric cost per condition on Colab: ~12 s -> ~5 min for 26 conditions; total run ~42 min (tight; measure in Step 7).
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.
