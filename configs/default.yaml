@@ -9,8 +9,12 @@ paths:
   results_dir: results
   cache_dir: results/cache          # detections cached as {corruption}_{severity}.pt
   figures_dir: results/figures
+  split_manifest: results/split.json  # committed: proves the subset is fixed
 
 data:
+  annotations_url: http://images.cocodataset.org/annotations/annotations_trainval2017.zip
+  annotations_member: annotations/instances_val2017.json   # file extracted from the zip
+  images_base_url: http://images.cocodataset.org/val2017
   subset_size: 500
   calibration_size: 250
   evaluation_size: 250

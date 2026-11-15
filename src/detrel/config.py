@@ -53,6 +53,19 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
     return cfg
 
 
+def resolve_path(path: str | Path) -> Path:
+    """Resolve a config path: absolute paths are kept, relative ones are taken from the repo root.
+
+    Args:
+        path: Path from the config.
+
+    Returns:
+        An absolute path.
+    """
+    p = Path(path)
+    return p if p.is_absolute() else REPO_ROOT / p
+
+
 def validate_config(cfg: dict[str, Any]) -> None:
     """Check that a config dictionary is complete and internally consistent.
 
