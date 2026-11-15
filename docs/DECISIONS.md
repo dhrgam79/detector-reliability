@@ -158,6 +158,15 @@ Findings (VRU, severity 5, paired 95% CI vs clean):
 | D62 | Figures are rendered from committed CSVs only (`detrel plots`), opaque white background, validated categorical palette in fixed order; the 3 low-contrast hues get secondary encoding (distinct markers, direct end labels, legend) | Reproducible without GPU/data; readable in GitHub light and dark themes; palette validator WARN on contrast requires relief |
 | D63 | `run-all` = sweep + plots; `scripts/run_all.py` calls it | One command reproduces tables and figures (brief §9) |
 
+## 2026-11-16 — Step 9 (calibration)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D64 | `fit_temperature`: single scalar T by minimising mean BCE over `a = 1/T` with a bounded scalar search (bounds [0.05, 20]); flags fits that hit a bound | BCE is convex in `a` (logistic regression, one coefficient, no intercept) -> global minimum; tested against a 400-point grid |
+| D65 | `logit_eps` lowered **1e-6 -> 1e-12**, computed in float64 | With 1e-6, distinct float32 scores near 1 collapse into ties (demonstrated: 4 distinct -> 2), which can reorder detections and change mAP. With 1e-12 only exact 0/1 are clipped |
+| D66 | Fit data: clean **calibration split**, **driving classes**, all kept detections (score >= 0.05), TP/FP from the same matching as D-ECE | Brief §6.4. Note: ~70% of these detections score < 0.3 (mostly FPs), so T is driven by the low-confidence region; revisit if D-ECE@0.3 does not improve |
+| D67 | Scaling preserves score order, so TP/FP labels are reused, not recomputed; D-ECE "after" is computed on the **same detections** selected by their **original** score (no re-thresholding) | Makes before/after a like-for-like comparison; tested: mAP identical to 1e-12 vs pycocotools for T in {0.4, 1.8, 7.5} |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.

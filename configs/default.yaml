@@ -74,7 +74,12 @@ metrics:
 calibration:
   method: confidence_logit          # p' = sigmoid(logit(p) / T), single scalar T
   temperature_bounds: [0.05, 20.0]
-  logit_eps: 1.0e-6                 # clip p to [eps, 1 - eps] before logit
+  # Clip p to [eps, 1 - eps] before logit. Tiny so that only exact 0/1 scores are clipped:
+  # a larger eps merges distinct float32 scores near 1 into ties and can change ranking (mAP).
+  logit_eps: 1.0e-12
+  fit_split: calibration            # clean calibration split only
+  fit_scope: driving                # which detections' TP/FP labels the fit uses
+  fit_score_threshold: 0.05         # all kept detections
 
 plots:
   dpi: 150
