@@ -21,7 +21,7 @@ def make_coco(n_images: int = 40) -> dict:
     images = [
         {"id": i, "file_name": f"{i:012d}.png", "width": 64, "height": 48} for i in range(n_images)
     ]
-    anns, aid = [], 0
+    anns, aid = [], 1  # COCO ann ids start at 1 (pycocotools treats 0 as "unmatched")
     for i in range(n_images):
         objs = [(DOG, 0)]
         if i % 2 == 0:

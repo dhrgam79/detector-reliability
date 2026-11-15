@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 def _coco_from_dict(coco: dict[str, Any]) -> COCO:
+    # pycocotools stores the matched GT *id* per detection and treats 0 as "unmatched", so a
+    # GT annotation with id 0 silently becomes unmatchable and mAP is wrong. Real COCO ids
+    # start at 1; refuse anything else rather than return a corrupted number.
+    if any(a["id"] <= 0 for a in coco["annotations"]):
+        raise ValueError("annotation ids must be positive (pycocotools treats id 0 as unmatched)")
     gt = COCO()
     gt.dataset = coco
     with contextlib.redirect_stdout(io.StringIO()):

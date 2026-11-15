@@ -97,6 +97,15 @@ mAP50 changes <= 0.002 except **VRU calibration mAP50 0.795 -> 0.786 (0.009)**.
 | D41 | Subset 500 -> 1000: calibration 250 (unchanged), evaluation 250 -> 750 | Prefix-stable selection: calibration identical and previous 250 eval images retained (tested) |
 | D42 | README must state: all inference in fp16 autocast; fp32 vs fp16 differences from this test | Disclosure |
 
+## 2026-11-15 — Step 5 (matching)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D43 | Matching = COCO protocol at IoU 0.5: score-descending (stable ties), same class, best-IoU unmatched non-crowd GT; else crowd match -> **ignored** (crowd uses intersection / det area, reusable); else FP | D-ECE and mAP must label the same detections the same way; crowd-ignore resolves the Step 3 open question |
+| D44 | Cross-check test: our TP/FP/ignored labels must equal pycocotools' `evalImgs` matches on random scenes (3 seeds, >100 dets each, all outcomes present) | Proves agreement with the reference implementation rather than asserting it |
+| D45 | `coco_map` rejects annotation id <= 0 | Found via D44: pycocotools stores the matched GT *id* and treats 0 as unmatched, so an id-0 GT silently becomes unmatchable and mAP is wrong. Real COCO ids start at 1; synthetic test data started at 0 and was fixed |
+| D46 | `data.ground_truth()` extracts GT without loading pixels; `CocoSubset` reuses it | Matching/metrics need GT for 1000 images without decoding images |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.

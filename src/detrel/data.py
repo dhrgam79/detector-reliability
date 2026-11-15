@@ -282,6 +282,50 @@ def ensure_images(cfg: dict[str, Any], coco: dict[str, Any], image_ids: Iterable
                 logger.info("  %d/%d", n, len(missing))
 
 
+# ------------------------------------------------------------------------- ground truth
+
+
+@dataclass(frozen=True)
+class GroundTruth:
+    """Ground truth of one image.
+
+    Attributes:
+        boxes: ``float32`` ``(N, 4)``, ``xyxy`` in pixels.
+        labels: ``int64`` ``(N,)`` COCO category ids.
+        iscrowd: ``bool`` ``(N,)``.
+    """
+
+    boxes: np.ndarray
+    labels: np.ndarray
+    iscrowd: np.ndarray
+
+
+def _gt_from_anns(anns: Sequence[dict[str, Any]]) -> GroundTruth:
+    xywh = np.array([a["bbox"] for a in anns], dtype=np.float32).reshape(-1, 4)
+    return GroundTruth(
+        boxes=np.concatenate([xywh[:, :2], xywh[:, :2] + xywh[:, 2:]], axis=1),
+        labels=np.array([a["category_id"] for a in anns], dtype=np.int64),
+        iscrowd=np.array([bool(a.get("iscrowd", 0)) for a in anns], dtype=bool),
+    )
+
+
+def ground_truth(coco: dict[str, Any], image_ids: Iterable[int]) -> dict[int, GroundTruth]:
+    """Ground truth for each requested image (all classes, crowd flags kept), without pixels.
+
+    Args:
+        coco: Parsed COCO instances dictionary.
+        image_ids: Images to extract.
+
+    Returns:
+        Mapping image id -> :class:`GroundTruth` (empty arrays for images without objects).
+    """
+    anns: dict[int, list[dict[str, Any]]] = {i: [] for i in image_ids}
+    for a in coco["annotations"]:
+        if a["image_id"] in anns:
+            anns[a["image_id"]].append(a)
+    return {i: _gt_from_anns(v) for i, v in anns.items()}
+
+
 # ------------------------------------------------------------------------------ dataset
 
 
@@ -307,10 +351,7 @@ class CocoSubset:
         missing = wanted - self._files.keys()
         if missing:
             raise KeyError(f"image ids not in annotations: {sorted(missing)[:5]}")
-        self._anns: dict[int, list[dict[str, Any]]] = {i: [] for i in self.image_ids}
-        for a in coco["annotations"]:
-            if a["image_id"] in wanted:
-                self._anns[a["image_id"]].append(a)
+        self._gt = ground_truth(coco, self.image_ids)
 
     def __len__(self) -> int:
         """Number of images."""
@@ -321,13 +362,11 @@ class CocoSubset:
         image_id = self.image_ids[idx]
         with Image.open(self.image_dir / self._files[image_id]) as im:
             image = np.array(im.convert("RGB"), dtype=np.uint8)  # writable copy
-        anns = self._anns[image_id]
-        xywh = np.array([a["bbox"] for a in anns], dtype=np.float32).reshape(-1, 4)
-        boxes = np.concatenate([xywh[:, :2], xywh[:, :2] + xywh[:, 2:]], axis=1)
+        gt = self._gt[image_id]
         return Sample(
             image_id=image_id,
             image=image,
-            boxes=boxes,
-            labels=np.array([a["category_id"] for a in anns], dtype=np.int64),
-            iscrowd=np.array([bool(a.get("iscrowd", 0)) for a in anns], dtype=bool),
+            boxes=gt.boxes,
+            labels=gt.labels,
+            iscrowd=gt.iscrowd,
         )

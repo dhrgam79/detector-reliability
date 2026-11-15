@@ -94,3 +94,10 @@ def test_restricting_images_and_categories():
 def test_no_detections_is_zero_and_no_gt_is_nan():
     assert coco_map(gt_coco(), [], [1, 2], [CAR]) == {"mAP": 0.0, "mAP50": 0.0}
     assert math.isnan(coco_map(gt_coco(), [], [1, 2], [PERSON])["mAP"])  # crowd-only GT
+
+
+def test_annotation_id_zero_is_rejected():
+    coco = gt_coco()
+    coco["annotations"][0]["id"] = 0
+    with pytest.raises(ValueError, match="positive"):
+        coco_map(coco, PERFECT, [1, 2], [CAR])
