@@ -10,6 +10,9 @@ paths:
   cache_dir: results/cache          # detections cached as {corruption}_{severity}.pt
   figures_dir: results/figures
   split_manifest: results/split.json  # committed: proves the subset is fixed
+  summary_csv: results/summary.csv          # one row per condition x scope (committed)
+  reliability_csv: results/reliability.csv  # per-bin data for reliability diagrams (committed)
+  run_info: results/run_info.json           # timings, versions, hardware of the last sweep
 
 data:
   annotations_url: http://images.cocodataset.org/annotations/annotations_trainval2017.zip

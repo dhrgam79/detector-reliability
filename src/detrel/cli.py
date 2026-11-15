@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import platform
+import time
+from datetime import datetime, timezone
 from typing import Any
 
 import torch
 
-from detrel import data, metrics, model
+from detrel import data, evaluate, metrics, model
 from detrel.config import load_config, resolve_path
 from detrel.corruptions import CORRUPTION_NAMES
 
@@ -48,6 +52,7 @@ class Workspace:
         self.image_dir = resolve_path(cfg["paths"]["data_dir"]) / cfg["paths"]["images"]
         self.device = model.resolve_device(cfg["model"]["device"])
         self._detector: torch.nn.Module | None = None
+        self.computed: list[str] = []  # conditions actually inferred (not from cache)
 
     def image_ids(self, split: str) -> list[int]:
         """Image ids of ``calibration`` or ``evaluation``."""
@@ -70,6 +75,7 @@ class Workspace:
         meta = model.cache_metadata(cfg, split, ids, corruption, severity)
 
         def compute() -> list[model.ImageDetections]:
+            self.computed.append(f"{split}/{key}")
             logger.info("Running %s on %s split", key, split)
             subset = data.CocoSubset(self.coco, self.image_dir, ids)
             ds = model.CorruptedImages(subset, corruption, severity, cfg["seed"])
@@ -130,6 +136,90 @@ def infer(cfg: dict[str, Any], args: argparse.Namespace) -> None:
     _map_table(ws, args.split, dets)
 
 
+def conditions(cfg: dict[str, Any]) -> list[tuple[str | None, int]]:
+    """Clean followed by every configured corruption x severity."""
+    c = cfg["corruptions"]
+    return [(None, 0)] + [(name, sev) for name in c["names"] for sev in c["severities"]]
+
+
+def sweep(cfg: dict[str, Any], args: argparse.Namespace) -> list[dict[str, Any]]:
+    """Full sweep: inference for every condition (cached), metrics, CSV outputs.
+
+    Writes ``summary.csv``, ``reliability.csv`` and ``run_info.json`` (paths from config).
+
+    Args:
+        cfg: Validated config.
+        args: Parsed CLI arguments (unused).
+
+    Returns:
+        The summary rows.
+    """
+    del args
+    t_start = time.perf_counter()
+    ws = Workspace(cfg)
+    t_data = time.perf_counter()
+
+    ws.detections("calibration", None, 0)  # needed for temperature scaling (step 9)
+    dets = {}
+    for corruption, severity in conditions(cfg):
+        dets[model.condition_key(corruption, severity)] = ws.detections(
+            "evaluation", corruption, severity
+        )
+    t_infer = time.perf_counter()
+
+    ids = ws.image_ids("evaluation")
+    gt = data.ground_truth(ws.coco, ids)
+    boot = cfg["metrics"]["bootstrap"]
+    weights = metrics.bootstrap_weights(len(ids), boot["n_resamples"], cfg["seed"])
+    summary, reliability, clean = [], [], None
+    for corruption, severity in conditions(cfg):
+        key = model.condition_key(corruption, severity)
+        res = evaluate.evaluate_condition(
+            cfg, ws.coco, gt, dets[key], ids, weights, corruption or model.CLEAN, severity
+        )
+        clean = clean or res
+        summary += evaluate.summary_rows(cfg, res, clean)
+        reliability += evaluate.reliability_rows(res)
+        logger.info("Metrics done: %s", key)
+    t_metrics = time.perf_counter()
+
+    paths = cfg["paths"]
+    evaluate.write_csv(resolve_path(paths["summary_csv"]), summary)
+    evaluate.write_csv(resolve_path(paths["reliability_csv"]), reliability)
+    info = {
+        "finished_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "seconds": {
+            "data": round(t_data - t_start, 1),
+            "inference": round(t_infer - t_data, 1),
+            "metrics": round(t_metrics - t_infer, 1),
+            "total": round(t_metrics - t_start, 1),
+        },
+        "conditions_inferred": ws.computed,
+        "conditions_total": 1 + len(dets),
+        "n_eval_images": len(ids),
+        "bootstrap_resamples": boot["n_resamples"],
+        "device": torch.cuda.get_device_name(0) if ws.device.type == "cuda" else "cpu",
+        "amp": cfg["model"]["amp"],
+        "versions": {
+            "python": platform.python_version(),
+            "torch": torch.__version__,
+            "torchvision": __import__("torchvision").__version__,
+            "numpy": __import__("numpy").__version__,
+        },
+    }
+    path = resolve_path(paths["run_info"])
+    path.write_text(json.dumps(info, indent=1) + "\n", encoding="utf-8")
+    logger.info(
+        "Sweep finished in %.1f min (data %.0fs, inference %.0fs for %d conditions, metrics %.0fs)",
+        info["seconds"]["total"] / 60,
+        info["seconds"]["data"],
+        info["seconds"]["inference"],
+        len(ws.computed),
+        info["seconds"]["metrics"],
+    )
+    return summary
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the ``detrel`` command-line interface.
 
@@ -145,6 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("prepare-data", help="Download data and create/verify the split manifest.")
     sub.add_parser("baseline", help="Clean inference on both splits and an mAP table.")
+    sub.add_parser("sweep", help="All conditions: inference (cached), metrics, summary.csv.")
     p_infer = sub.add_parser("infer", help="Run one split x condition (cached).")
     p_infer.add_argument("--split", choices=SPLITS, default="evaluation")
     p_infer.add_argument("--corruption", choices=CORRUPTION_NAMES, default=None)
@@ -159,6 +250,8 @@ def main(argv: list[str] | None = None) -> int:
         prepare_data(cfg)
     elif args.command == "baseline":
         baseline(cfg, args)
+    elif args.command == "sweep":
+        sweep(cfg, args)
     else:
         infer(cfg, args)
     return 0

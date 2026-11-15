@@ -119,6 +119,16 @@ mAP50 changes <= 0.002 except **VRU calibration mAP50 0.795 -> 0.786 (0.009)**.
 
 Estimated metric cost per condition on Colab: ~12 s -> ~5 min for 26 conditions; total run ~42 min (tight; measure in Step 7).
 
+## 2026-11-15 — Step 7 (sweep)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D53 | New module `evaluate.py` (not in brief §4) for per-condition evaluation; `cli.py` orchestrates | Keeps `metrics.py` as primitives and `cli.py` thin |
+| D54 | `summary.csv` = one row per condition x scope (driving, vru, vehicle, infrastructure, all80) with value, 95% CI, and **paired delta vs clean with CI** for mAP, mAP50, D-ECE@0.05, D-ECE@0.3; plus `n_gt`, `sufficient`, detection counts. Extends brief §6.5 columns; `dece_after` columns come in step 10 | Deltas with paired CIs are what support claims like "fog-5 lowers VRU mAP by X (CI ...)" |
+| D55 | `reliability.csv` stores per-bin count/precision/confidence for every condition x scope x threshold | Plots (step 8) read CSVs only; no recomputation |
+| D56 | `run_info.json` records timings (data / inference / metrics), which conditions were actually inferred vs cached, GPU, AMP, versions | Backs the README runtime claim honestly (cached runs are visible) |
+| D57 | Calibration-split clean inference runs inside the sweep | Needed in step 9; its cost belongs in the measured runtime |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.
