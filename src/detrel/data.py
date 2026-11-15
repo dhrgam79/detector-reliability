@@ -14,6 +14,7 @@ import shutil
 import urllib.request
 import zipfile
 from collections.abc import Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -270,10 +271,15 @@ def ensure_images(cfg: dict[str, Any], coco: dict[str, Any], image_ids: Iterable
     if missing:
         logger.info("Downloading %d images to %s", len(missing), image_dir)
     base = cfg["data"]["images_base_url"].rstrip("/")
-    for n, i in enumerate(missing, 1):
-        _download(f"{base}/{names[i]}", image_dir / names[i])
-        if n % 50 == 0:
-            logger.info("  %d/%d", n, len(missing))
+    # Downloads are latency-bound (~1.2 s each sequentially on Colab), so fetch in parallel.
+    with ThreadPoolExecutor(max_workers=cfg["data"]["download_workers"]) as pool:
+        futures = [
+            pool.submit(_download, f"{base}/{names[i]}", image_dir / names[i]) for i in missing
+        ]
+        for n, fut in enumerate(as_completed(futures), 1):
+            fut.result()  # re-raise any download error
+            if n % 100 == 0:
+                logger.info("  %d/%d", n, len(missing))
 
 
 # ------------------------------------------------------------------------------ dataset

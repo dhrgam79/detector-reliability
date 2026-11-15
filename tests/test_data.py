@@ -217,7 +217,7 @@ def test_ensure_images_downloads_only_missing(cfg, coco, monkeypatch):
     monkeypatch.setattr(data, "_download", lambda url, dest: calls.append((url, dest.name)))
     data.ensure_images(cfg, coco, [0, 2, 4])
     base = cfg["data"]["images_base_url"]
-    assert calls == [
+    assert sorted(calls) == [
         (f"{base}/000000000000.png", "000000000000.png"),
         (f"{base}/000000000004.png", "000000000004.png"),
     ]
