@@ -29,6 +29,14 @@ data:
     truck: 8
     traffic light: 10
     stop sign: 13
+  # Safety-relevant groups (must partition driving_classes). Reported separately.
+  class_groups:
+    vru: [1, 2, 4]              # vulnerable road users: person, bicycle, motorcycle
+    vehicle: [3, 6, 8]          # car, bus, truck
+    infrastructure: [10, 13]    # traffic light, stop sign
+  # Groups/classes with fewer evaluation GT instances than this are reported but flagged
+  # as insufficient evidence for claims.
+  min_instances_for_claim: 100
   # Secondary analysis: all 80 COCO classes on the same images.
   report_all_classes: true
 

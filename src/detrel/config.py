@@ -84,6 +84,9 @@ def validate_config(cfg: dict[str, Any]) -> None:
         raise ConfigError("calibration_size + evaluation_size must equal subset_size")
     if not data["driving_classes"]:
         raise ConfigError("driving_classes must not be empty")
+    grouped = [c for ids in data["class_groups"].values() for c in ids]
+    if len(grouped) != len(set(grouped)) or set(grouped) != set(data["driving_classes"].values()):
+        raise ConfigError("class_groups must partition driving_classes (disjoint, complete)")
 
     severities = cfg["corruptions"]["severities"]
     if not severities or any(s not in range(1, 6) for s in severities):

@@ -42,6 +42,21 @@ def test_dece_threshold_below_inference_threshold(cfg):
         validate_config(bad)
 
 
+@pytest.mark.parametrize(
+    "groups",
+    [
+        {"vru": [1, 2, 4], "vehicle": [3, 6, 8], "infrastructure": [10]},  # incomplete
+        {"vru": [1, 2, 4, 3], "vehicle": [3, 6, 8], "infrastructure": [10, 13]},  # overlap
+        {"vru": [1, 2, 4, 99], "vehicle": [3, 6, 8], "infrastructure": [10, 13]},  # unknown id
+    ],
+)
+def test_class_groups_must_partition(cfg, groups):
+    bad = copy.deepcopy(cfg)
+    bad["data"]["class_groups"] = groups
+    with pytest.raises(ConfigError):
+        validate_config(bad)
+
+
 def test_missing_section(cfg):
     bad = copy.deepcopy(cfg)
     del bad["calibration"]
