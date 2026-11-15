@@ -15,6 +15,7 @@ from typing import Any
 
 import numpy as np
 
+from detrel.calibration import FitResult, apply_temperature, fit_temperature
 from detrel.data import GroundTruth
 from detrel.matching import match_detections
 from detrel.metrics import (
@@ -42,9 +43,31 @@ def scopes(cfg: dict[str, Any], coco: dict[str, Any]) -> dict[str, list[int]]:
     return out
 
 
-def metric_names(cfg: dict[str, Any]) -> list[str]:
-    """Metric keys, e.g. ``mAP``, ``mAP50``, ``dece_t0.05``, ``dece_t0.3``."""
-    return ["mAP", "mAP50"] + [f"dece_t{t:g}" for t in cfg["metrics"]["dece_score_thresholds"]]
+def metric_names(cfg: dict[str, Any], calibrated: bool = False) -> list[str]:
+    """Metric keys: ``mAP``, ``mAP50``, ``dece_t<thr>`` and, if calibrated, ``dece_cal_t<thr>``."""
+    thresholds = cfg["metrics"]["dece_score_thresholds"]
+    names = ["mAP", "mAP50"] + [f"dece_t{t:g}" for t in thresholds]
+    if calibrated:
+        names += [f"dece_cal_t{t:g}" for t in thresholds]
+    return names
+
+
+def fit_on_split(
+    cfg: dict[str, Any],
+    coco: dict[str, Any],
+    gt: Mapping[int, GroundTruth],
+    detections: Sequence[ImageDetections],
+) -> FitResult:
+    """Fit the temperature on one split's detections (scope and threshold from config).
+
+    Uses the same matching as D-ECE, so the TP/FP labels the fit sees are exactly the ones
+    D-ECE is later computed with.
+    """
+    c = cfg["calibration"]
+    pooled = match_detections(detections, gt, cfg["matching"]["iou_threshold"])
+    sel = select_detections(pooled, c["fit_score_threshold"], scopes(cfg, coco)[c["fit_scope"]])
+    lo, hi = c["temperature_bounds"]
+    return fit_temperature(sel.score, sel.tp, (lo, hi), c["logit_eps"])
 
 
 @dataclass
@@ -57,7 +80,7 @@ class ConditionResult:
         points: ``{(scope, metric): value}``.
         samples: ``{(scope, metric): (R,) bootstrap samples}`` (absent = no CI, e.g. all-80 mAP).
         counts: ``{(scope, key): int}`` with ``n_gt`` and ``n_det_t<thr>``.
-        reliability: ``{(scope, threshold): DeceResult}``.
+        reliability: ``{(scope, threshold, calibrated): DeceResult}``.
     """
 
     corruption: str
@@ -77,6 +100,7 @@ def evaluate_condition(
     weights: np.ndarray,
     corruption: str,
     severity: int,
+    temperature: float | None = None,
 ) -> ConditionResult:
     """Compute every reported metric for one condition.
 
@@ -89,6 +113,8 @@ def evaluate_condition(
         weights: ``(R, n_images)`` bootstrap weights shared by all conditions.
         corruption: Corruption name or ``clean``.
         severity: Severity (0 = clean).
+        temperature: If given, also compute D-ECE after temperature scaling, on the same
+            detections (selected by their original score; scaling preserves TP/FP labels).
 
     Returns:
         The condition's :class:`ConditionResult`.
@@ -128,7 +154,15 @@ def evaluate_condition(
                 sel.score, sel.tp, image_index(sel, image_ids), n_bins, weights
             )
             res.counts[(name, f"n_det_t{thr:g}")] = len(sel)
-            res.reliability[(name, thr)] = r
+            res.reliability[(name, thr, False)] = r
+            if temperature is not None:
+                cal = apply_temperature(sel.score, temperature, cfg["calibration"]["logit_eps"])
+                rc = dece(cal, sel.tp, n_bins)
+                res.points[(name, f"dece_cal_t{thr:g}")] = rc.value
+                res.samples[(name, f"dece_cal_t{thr:g}")] = dece_resamples(
+                    cal, sel.tp, image_index(sel, image_ids), n_bins, weights
+                )
+                res.reliability[(name, thr, True)] = rc
     return res
 
 
@@ -148,7 +182,8 @@ def summary_rows(
             "n_gt": result.counts[(s, "n_gt")],
             "sufficient": result.counts[(s, "n_gt")] >= min_n,
         }
-        for m in metric_names(cfg):
+        calibrated = any(k[1].startswith("dece_cal_") for k in result.points)
+        for m in metric_names(cfg, calibrated):
             point, samples = result.points[(s, m)], result.samples.get((s, m))
             ci = percentile_ci(point, samples, level) if samples is not None else None
             row[m] = point
@@ -162,6 +197,18 @@ def summary_rows(
             row[f"d_{m}"] = d_point
             row[f"d_{m}_lo"] = d_ci.low if d_ci else math.nan
             row[f"d_{m}_hi"] = d_ci.high if d_ci else math.nan
+        if calibrated:
+            # Improvement from scaling within this condition (before - after), paired CI.
+            for t in cfg["metrics"]["dece_score_thresholds"]:
+                b, a = f"dece_t{t:g}", f"dece_cal_t{t:g}"
+                gain = percentile_ci(
+                    result.points[(s, b)] - result.points[(s, a)],
+                    result.samples[(s, b)] - result.samples[(s, a)],
+                    level,
+                )
+                row[f"cal_gain_t{t:g}"] = gain.value
+                row[f"cal_gain_t{t:g}_lo"] = gain.low
+                row[f"cal_gain_t{t:g}_hi"] = gain.high
         for t in cfg["metrics"]["dece_score_thresholds"]:
             row[f"n_det_t{t:g}"] = result.counts[(s, f"n_det_t{t:g}")]
         rows.append(row)
@@ -171,7 +218,7 @@ def summary_rows(
 def reliability_rows(result: ConditionResult) -> list[dict[str, Any]]:
     """Rows for ``reliability.csv``: per scope, threshold and confidence bin."""
     rows = []
-    for (scope, thr), r in result.reliability.items():
+    for (scope, thr, calibrated), r in result.reliability.items():
         for k in range(len(r.count)):
             rows.append(
                 {
@@ -179,6 +226,7 @@ def reliability_rows(result: ConditionResult) -> list[dict[str, Any]]:
                     "severity": result.severity,
                     "scope": scope,
                     "score_threshold": thr,
+                    "calibrated": calibrated,
                     "bin": k,
                     "bin_low": r.bin_edges[k],
                     "bin_high": r.bin_edges[k + 1],

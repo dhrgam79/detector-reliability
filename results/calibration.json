@@ -1,0 +1,12 @@
+{
+ "temperature": 0.050000001269275715,
+ "nll_before": 0.05129330693589689,
+ "nll_after": 2.660301198164872e-26,
+ "n_detections": 4,
+ "n_tp": 4,
+ "at_bound": true,
+ "method": "confidence_logit",
+ "fit_split": "calibration",
+ "fit_scope": "driving",
+ "fit_score_threshold": 0.05
+}

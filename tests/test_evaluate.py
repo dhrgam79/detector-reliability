@@ -128,3 +128,58 @@ def test_write_csv(tmp_path):
         p, [{"a": 1, "b": 0.123456789, "c": "s"}, {"a": 2, "b": float("nan"), "c": "t"}]
     )
     assert p.read_text().splitlines() == ["a,b,c", "1,0.123457,s", "2,nan,t"]
+
+
+# ------------------------------------------------------------------ temperature scaling
+
+
+def test_temperature_one_reproduces_raw_dece(setup):
+    cfg, coco, gt, ids, w = setup
+    res = evaluate.evaluate_condition(
+        cfg, coco, gt, detections(True), ids, w, "fog", 5, temperature=1.0
+    )
+    for scope in ("driving", "vehicle"):
+        for t in ("0.05", "0.3"):
+            assert res.points[(scope, f"dece_cal_t{t}")] == pytest.approx(
+                res.points[(scope, f"dece_t{t}")]
+            )
+            np.testing.assert_allclose(
+                res.samples[(scope, f"dece_cal_t{t}")], res.samples[(scope, f"dece_t{t}")]
+            )
+    assert ("driving", 0.3, True) in res.reliability and ("driving", 0.3, False) in res.reliability
+
+
+def test_calibrated_columns_and_paired_gain(setup):
+    cfg, coco, gt, ids, w = setup
+    # All detections are TPs at 0.9: sharpening (T < 1) moves confidence towards 1 -> D-ECE falls.
+    clean = evaluate.evaluate_condition(
+        cfg, coco, gt, detections(False), ids, w, "clean", 0, temperature=0.5
+    )
+    rows = {r["scope"]: r for r in evaluate.summary_rows(cfg, clean, clean)}
+    d = rows["driving"]
+    assert d["dece_cal_t0.3"] < d["dece_t0.3"]
+    assert d["cal_gain_t0.3"] == pytest.approx(d["dece_t0.3"] - d["dece_cal_t0.3"])
+    # Every detection is identical here, so the CI collapses onto the point (up to rounding).
+    assert d["cal_gain_t0.3_lo"] - 1e-12 <= d["cal_gain_t0.3"] <= d["cal_gain_t0.3_hi"] + 1e-12
+    assert "dece_cal_t0.05_lo" in d and "d_dece_cal_t0.3" in d
+    rel = evaluate.reliability_rows(clean)
+    assert (
+        len(rel) == 5 * 2 * 2 * cfg["metrics"]["dece_bins"]
+    )  # scopes x thresholds x {raw, cal} x bins
+    assert {r["calibrated"] for r in rel} == {False, True}
+
+
+def test_uncalibrated_rows_have_no_calibration_columns(setup):
+    cfg, coco, gt, ids, w = setup
+    res = evaluate.evaluate_condition(cfg, coco, gt, detections(False), ids, w, "clean", 0)
+    row = evaluate.summary_rows(cfg, res, res)[0]
+    assert not any(k.startswith(("dece_cal", "cal_gain")) for k in row)
+
+
+def test_fit_on_split_uses_configured_scope_and_threshold(setup):
+    cfg, coco, gt, ids, _ = setup
+    fit = evaluate.fit_on_split(cfg, coco, gt, detections(True))
+    # driving scope: 40 persons (TP) + 20 cars (TP) + 20 car FPs, all >= 0.05
+    assert fit.n == 80 and fit.n_tp == 60
+    cfg["calibration"]["fit_scope"] = "vru"
+    assert evaluate.fit_on_split(cfg, coco, gt, detections(True)).n == 40

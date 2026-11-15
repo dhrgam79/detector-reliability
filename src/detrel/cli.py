@@ -167,6 +167,31 @@ def sweep(cfg: dict[str, Any], args: argparse.Namespace) -> list[dict[str, Any]]
         )
     t_infer = time.perf_counter()
 
+    # Temperature scaling: fit on the clean calibration split only (brief §6.4).
+    cal_ids = ws.image_ids(cfg["calibration"]["fit_split"])
+    fit = evaluate.fit_on_split(
+        cfg,
+        ws.coco,
+        data.ground_truth(ws.coco, cal_ids),
+        ws.detections(cfg["calibration"]["fit_split"], None, 0),
+    )
+    c = cfg["calibration"]
+    calib_info = {
+        "temperature": fit.temperature,
+        "nll_before": fit.nll_before,
+        "nll_after": fit.nll_after,
+        "n_detections": fit.n,
+        "n_tp": fit.n_tp,
+        "at_bound": fit.at_bound,
+        "method": c["method"],
+        "fit_split": c["fit_split"],
+        "fit_scope": c["fit_scope"],
+        "fit_score_threshold": c["fit_score_threshold"],
+    }
+    calib_path = resolve_path(cfg["paths"]["calibration_json"])
+    calib_path.parent.mkdir(parents=True, exist_ok=True)
+    calib_path.write_text(json.dumps(calib_info, indent=1) + "\n", encoding="utf-8")
+
     ids = ws.image_ids("evaluation")
     gt = data.ground_truth(ws.coco, ids)
     boot = cfg["metrics"]["bootstrap"]
@@ -175,7 +200,15 @@ def sweep(cfg: dict[str, Any], args: argparse.Namespace) -> list[dict[str, Any]]
     for corruption, severity in conditions(cfg):
         key = model.condition_key(corruption, severity)
         res = evaluate.evaluate_condition(
-            cfg, ws.coco, gt, dets[key], ids, weights, corruption or model.CLEAN, severity
+            cfg,
+            ws.coco,
+            gt,
+            dets[key],
+            ids,
+            weights,
+            corruption or model.CLEAN,
+            severity,
+            temperature=fit.temperature,
         )
         clean = clean or res
         summary += evaluate.summary_rows(cfg, res, clean)
@@ -200,6 +233,7 @@ def sweep(cfg: dict[str, Any], args: argparse.Namespace) -> list[dict[str, Any]]
         "bootstrap_resamples": boot["n_resamples"],
         "device": torch.cuda.get_device_name(0) if ws.device.type == "cuda" else "cpu",
         "amp": cfg["model"]["amp"],
+        "temperature": fit.temperature,
         "versions": {
             "python": platform.python_version(),
             "torch": torch.__version__,
@@ -232,11 +266,14 @@ def make_plots(cfg: dict[str, Any], args: argparse.Namespace) -> list[Any]:
     """
     del args
     paths = cfg["paths"]
-    run_info = resolve_path(paths["run_info"])
+    run_info, calib = resolve_path(paths["run_info"]), resolve_path(paths["calibration_json"])
     n_images = (
         json.loads(run_info.read_text(encoding="utf-8")).get("n_eval_images")
         if run_info.exists()
         else None
+    )
+    temperature = (
+        json.loads(calib.read_text(encoding="utf-8"))["temperature"] if calib.exists() else None
     )
     return plots.make_figures(
         cfg,
@@ -244,6 +281,7 @@ def make_plots(cfg: dict[str, Any], args: argparse.Namespace) -> list[Any]:
         resolve_path(paths["reliability_csv"]),
         resolve_path(paths["figures_dir"]),
         n_images,
+        temperature,
     )
 
 

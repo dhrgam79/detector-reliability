@@ -13,6 +13,7 @@ paths:
   summary_csv: results/summary.csv          # one row per condition x scope (committed)
   reliability_csv: results/reliability.csv  # per-bin data for reliability diagrams (committed)
   run_info: results/run_info.json           # timings, versions, hardware of the last sweep
+  calibration_json: results/calibration.json  # fitted temperature + fit diagnostics (committed)
 
 data:
   annotations_url: http://images.cocodataset.org/annotations/annotations_trainval2017.zip
@@ -87,6 +88,9 @@ plots:
   # Figure 1: accuracy vs severity, one panel per scope, one line per corruption.
   severity_metric: mAP50            # IoU 0.5, the same TP definition D-ECE uses
   severity_scopes: [vru, vehicle]
+  # Figure 2: calibration before vs after temperature scaling.
+  calibration_metric: dece_t0.3     # operating point
+  calibration_scope: vru
   # Figure 3: reliability diagrams (per-bin precision vs confidence).
   reliability_scope: vru
   reliability_threshold: 0.05       # full range; bins >= 0.3 are identical to the 0.3 operating point

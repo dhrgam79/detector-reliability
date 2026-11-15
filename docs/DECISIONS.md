@@ -167,6 +167,15 @@ Findings (VRU, severity 5, paired 95% CI vs clean):
 | D66 | Fit data: clean **calibration split**, **driving classes**, all kept detections (score >= 0.05), TP/FP from the same matching as D-ECE | Brief §6.4. Note: ~70% of these detections score < 0.3 (mostly FPs), so T is driven by the low-confidence region; revisit if D-ECE@0.3 does not improve |
 | D67 | Scaling preserves score order, so TP/FP labels are reused, not recomputed; D-ECE "after" is computed on the **same detections** selected by their **original** score (no re-thresholding) | Makes before/after a like-for-like comparison; tested: mAP identical to 1e-12 vs pycocotools for T in {0.4, 1.8, 7.5} |
 
+## 2026-11-16 — Step 10 (calibration in the sweep)
+
+| # | Decision | Rationale |
+|---|---|---|
+| D68 | `sweep` fits T once on the clean calibration split (cached detections) and writes `results/calibration.json` (T, NLL before/after, n, n_tp, at_bound, fit settings) | Brief §6.4; one committed record of the fix being evaluated |
+| D69 | New `summary.csv` columns: `dece_cal_t*` (value, CI, paired delta vs clean-after) and `cal_gain_t*` = before - after with **paired** CI within each condition | "Does scaling help here?" needs a CI on the improvement itself, not two overlapping CIs |
+| D70 | `reliability.csv` gains a `calibrated` column; Figure 3 becomes a 2x3 grid (rows: raw / after scaling) | Before/after on the same detections, same bins |
+| D71 | Figure 2 = VRU D-ECE@0.3 vs severity, panels "before" / "after (T = ...)", same colours as Figure 1 | Operating-point calibration of the headline group |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.

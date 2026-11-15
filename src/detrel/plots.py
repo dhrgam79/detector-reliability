@@ -12,6 +12,7 @@ import csv
 import logging
 import math
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,8 @@ METRIC_TITLES = {
     "mAP50": "mAP@0.5",
     "dece_t0.05": "D-ECE (score ≥ 0.05)",
     "dece_t0.3": "D-ECE (score ≥ 0.3)",
+    "dece_cal_t0.05": "D-ECE after scaling (score ≥ 0.05)",
+    "dece_cal_t0.3": "D-ECE after scaling (score ≥ 0.3)",
 }
 
 
@@ -94,43 +97,51 @@ def severity_series(
     return out
 
 
+@dataclass(frozen=True)
+class Panel:
+    """One small-multiple panel: a scope and a metric column, with a title."""
+
+    scope: str
+    metric: str
+    title: str
+
+
 def plot_metric_vs_severity(
     summary: Sequence[dict[str, Any]],
-    scopes: Sequence[str],
-    metric: str,
+    panels: Sequence[Panel],
     corruptions: Sequence[str],
     out_path: str | Path,
     dpi: int,
-    n_images: int | None = None,
+    title: str,
 ) -> Path:
-    """Small multiples (one panel per scope) of ``metric`` vs severity, one line per corruption.
+    """Small multiples of a metric vs severity (shared y), one line per corruption.
 
     Args:
         summary: Rows of ``summary.csv``.
-        scopes: Scopes, one panel each (shared y axis).
-        metric: Column, e.g. ``mAP50`` or ``dece_t0.3``.
+        panels: One :class:`Panel` per subplot.
         corruptions: Corruptions in fixed colour order.
         out_path: Output PNG path.
         dpi: Resolution.
-        n_images: Evaluation-set size for the subtitle.
+        title: Figure title.
 
     Returns:
         The written path.
     """
-    fig, axes = plt.subplots(1, len(scopes), figsize=(5.2 * len(scopes), 4.4), sharey=True)
-    axes = [axes] if len(scopes) == 1 else list(axes)
+    fig, axes = plt.subplots(1, len(panels), figsize=(5.2 * len(panels), 4.4), sharey=True)
+    axes = [axes] if len(panels) == 1 else list(axes)
     fig.patch.set_facecolor(SURFACE)
     all_ends: list[list[tuple[float, str]]] = []
     top = max(
-        max(s["high"])
-        for scope in scopes
-        for s in severity_series(summary, scope, metric, corruptions).values()
+        max(s["high"] + s["value"])
+        for p in panels
+        for s in severity_series(summary, p.scope, p.metric, corruptions).values()
     )
-    for ax, scope in zip(axes, scopes, strict=True):
+    for ax, panel in zip(axes, panels, strict=True):
         _style(ax)
-        series = severity_series(summary, scope, metric, corruptions)
         ends = []
-        for i, (c, s) in enumerate(series.items()):
+        for i, (c, s) in enumerate(
+            severity_series(summary, panel.scope, panel.metric, corruptions).items()
+        ):
             color = SERIES_COLORS[i]
             ax.fill_between(s["severity"], s["low"], s["high"], color=color, alpha=0.12, lw=0)
             ax.plot(
@@ -146,23 +157,17 @@ def plot_metric_vs_severity(
             )
             ends.append((s["value"][-1], c.replace("_", " ")))
         all_ends.append(ends)
-        ax.set_title(SCOPE_TITLES.get(scope, scope), color=TEXT_PRIMARY, fontsize=11, loc="left")
+        ax.set_title(panel.title, color=TEXT_PRIMARY, fontsize=11, loc="left")
         ax.set_xticks(range(6), ["clean", "1", "2", "3", "4", "5"])
         ax.set_xlim(-0.2, 6.3)
         ax.set_xlabel("corruption severity", color=TEXT_SECONDARY, fontsize=9)
-    axes[0].set_ylabel(METRIC_TITLES.get(metric, metric), color=TEXT_SECONDARY, fontsize=9)
+    axes[0].set_ylabel(
+        METRIC_TITLES.get(panels[0].metric, panels[0].metric), color=TEXT_SECONDARY, fontsize=9
+    )
     axes[0].set_ylim(0, top * 1.05)  # final range first, so label spacing is measured correctly
     for ax, ends in zip(axes, all_ends, strict=True):
         _direct_labels(ax, ends)
-    sub = f" · {n_images} COCO val2017 images" if n_images else ""
-    fig.suptitle(
-        f"{METRIC_TITLES.get(metric, metric)} under camera corruptions "
-        f"(Faster R-CNN v2, shaded: 95% bootstrap CI{sub})",
-        color=TEXT_PRIMARY,
-        fontsize=11,
-        x=0.01,
-        ha="left",
-    )
+    fig.suptitle(title, color=TEXT_PRIMARY, fontsize=11, x=0.01, ha="left")
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=len(labels), frameon=False, fontsize=9)
     fig.tight_layout(rect=(0, 0.07, 1, 0.94))
@@ -189,6 +194,7 @@ def reliability_bins(
     severity: int,
     scope: str,
     threshold: float,
+    calibrated: bool = False,
 ) -> list[dict[str, Any]]:
     """Bins of one reliability diagram, ordered by bin index."""
     rows = [
@@ -198,9 +204,12 @@ def reliability_bins(
         and r["severity"] == severity
         and r["scope"] == scope
         and math.isclose(r["score_threshold"], threshold)
+        and bool(r.get("calibrated", False)) == calibrated
     ]
     if not rows:
-        raise KeyError(f"no reliability rows for {corruption}/{severity}/{scope}/{threshold}")
+        raise KeyError(
+            f"no reliability rows for {corruption}/{severity}/{scope}/{threshold}/{calibrated}"
+        )
     return sorted(rows, key=lambda r: r["bin"])
 
 
@@ -212,81 +221,107 @@ def plot_reliability(
     threshold: float,
     out_path: str | Path,
     dpi: int,
-    title_suffix: str = "",
+    rows: Sequence[bool] = (False,),
+    temperature: float | None = None,
 ) -> Path:
     """Reliability diagrams: per-bin precision (bars) against the ideal diagonal.
 
-    Bars below the diagonal mean overconfidence. Each panel is annotated with D-ECE at every
-    reported score threshold (with 95% CI) and the detection count.
+    One column per condition, one row per calibration state (``False`` = raw scores,
+    ``True`` = after temperature scaling). Bars below the diagonal mean overconfidence.
+    Each panel is annotated with that row's D-ECE at every reported threshold (95% CI).
 
     Args:
         reliability: Rows of ``reliability.csv``.
         summary: Rows of ``summary.csv`` (for D-ECE annotations).
-        conditions: ``(corruption, severity)`` per panel.
+        conditions: ``(corruption, severity)`` per column.
         scope: Scope to show.
         threshold: Score threshold of the binned detections.
         out_path: Output PNG path.
         dpi: Resolution.
-        title_suffix: Appended to the figure title (e.g. "before temperature scaling").
+        rows: Calibration state per row.
+        temperature: Fitted T, shown in the row label of calibrated rows.
 
     Returns:
         The written path.
     """
-    fig, axes = plt.subplots(1, len(conditions), figsize=(4.0 * len(conditions), 4.9), sharey=True)
-    axes = [axes] if len(conditions) == 1 else list(axes)
+    n_r, n_c = len(rows), len(conditions)
+    fig, grid = plt.subplots(
+        n_r, n_c, figsize=(4.0 * n_c, 4.3 * n_r + 0.6), sharex=True, sharey=True, squeeze=False
+    )
     fig.patch.set_facecolor(SURFACE)
-    for ax, (corruption, severity) in zip(axes, conditions, strict=True):
-        _style(ax)
-        bins = reliability_bins(reliability, corruption, severity, scope, threshold)
-        lows = [b["bin_low"] for b in bins]
-        width = bins[0]["bin_high"] - bins[0]["bin_low"]
-        prec = [0.0 if math.isnan(b["precision"]) else b["precision"] for b in bins]
-        ax.bar(lows, prec, width=width * 0.9, align="edge", color=SERIES_COLORS[0], lw=0)
-        ax.plot([0, 1], [0, 1], color=TEXT_SECONDARY, lw=1.2, ls=(0, (4, 3)))
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        ax.set_aspect("equal")
-        name = (
-            "clean"
-            if corruption == "clean"
-            else f"{corruption.replace('_', ' ')} · severity {severity}"
-        )
-        ax.set_title(name, color=TEXT_PRIMARY, fontsize=11, loc="left")
-        ax.set_xlabel("confidence", color=TEXT_SECONDARY, fontsize=9)
-
-        row = next(
-            r
-            for r in summary
-            if r["corruption"] == corruption and r["severity"] == severity and r["scope"] == scope
-        )
-        lines = []
-        for key in sorted(
-            k for k in row if k.startswith("dece_t") and not k.endswith(("_lo", "_hi"))
-        ):
-            t = key.removeprefix("dece_t")
-            lines.append(
-                f"D-ECE (≥{t}) {row[key]:.3f} [{row[key + '_lo']:.3f}, {row[key + '_hi']:.3f}]"
+    for ri, calibrated in enumerate(rows):
+        for ci, (corruption, severity) in enumerate(conditions):
+            ax = grid[ri][ci]
+            _style(ax)
+            bins = reliability_bins(reliability, corruption, severity, scope, threshold, calibrated)
+            width = bins[0]["bin_high"] - bins[0]["bin_low"]
+            prec = [0.0 if math.isnan(b["precision"]) else b["precision"] for b in bins]
+            color = SERIES_COLORS[0] if not calibrated else "#1c5cab"
+            ax.bar(
+                [b["bin_low"] for b in bins],
+                prec,
+                width=width * 0.9,
+                align="edge",
+                color=color,
+                lw=0,
             )
-        lines.append(f"n = {int(sum(b['count'] for b in bins)):,} detections")
-        ax.text(
-            0.03,
-            0.97,
-            "\n".join(lines),
-            transform=ax.transAxes,
-            va="top",
-            fontsize=7.5,
-            color=TEXT_PRIMARY,
-        )
-    axes[0].set_ylabel("precision (fraction TP)", color=TEXT_SECONDARY, fontsize=9)
+            ax.plot([0, 1], [0, 1], color=TEXT_SECONDARY, lw=1.2, ls=(0, (4, 3)))
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.set_aspect("equal")
+            if ri == 0:
+                name = (
+                    "clean"
+                    if corruption == "clean"
+                    else f"{corruption.replace('_', ' ')} · severity {severity}"
+                )
+                ax.set_title(name, color=TEXT_PRIMARY, fontsize=11, loc="left")
+            if ri == n_r - 1:
+                ax.set_xlabel("confidence", color=TEXT_SECONDARY, fontsize=9)
+            if ci == 0:
+                state = (
+                    "raw scores"
+                    if not calibrated
+                    else (
+                        f"after scaling (T = {temperature:.2f})" if temperature else "after scaling"
+                    )
+                )
+                ax.set_ylabel(f"{state}\nprecision (fraction TP)", color=TEXT_SECONDARY, fontsize=9)
+
+            row = next(
+                r
+                for r in summary
+                if r["corruption"] == corruption
+                and r["severity"] == severity
+                and r["scope"] == scope
+            )
+            prefix = "dece_cal_t" if calibrated else "dece_t"
+            lines = []
+            for key in sorted(
+                k for k in row if k.startswith(prefix) and not k.endswith(("_lo", "_hi"))
+            ):
+                t = key.removeprefix(prefix)
+                lines.append(
+                    f"D-ECE (≥{t}) {row[key]:.3f} [{row[key + '_lo']:.3f}, {row[key + '_hi']:.3f}]"
+                )
+            lines.append(f"n = {int(sum(b['count'] for b in bins)):,} detections")
+            ax.text(
+                0.03,
+                0.97,
+                "\n".join(lines),
+                transform=ax.transAxes,
+                va="top",
+                fontsize=7.5,
+                color=TEXT_PRIMARY,
+            )
     fig.suptitle(
-        f"Reliability: {SCOPE_TITLES.get(scope, scope)} (bars below the diagonal = overconfident)"
-        f"{title_suffix}",
+        f"Reliability: {SCOPE_TITLES.get(scope, scope)} (bars below the diagonal = overconfident)",
         color=TEXT_PRIMARY,
         fontsize=11,
         x=0.01,
         ha="left",
     )
-    fig.tight_layout(rect=(0, 0.03, 1, 0.93))
+    fig.tight_layout(rect=(0, 0.02, 1, 0.95))
     return _save(fig, out_path, dpi)
 
 
@@ -305,8 +340,12 @@ def make_figures(
     reliability_path: Path,
     out_dir: Path,
     n_images: int | None = None,
+    temperature: float | None = None,
 ) -> list[Path]:
     """Write all figures configured under ``plots`` from the result CSVs.
+
+    Figure 2 and the calibrated row of Figure 3 are drawn only if the CSVs contain
+    after-scaling columns.
 
     Args:
         cfg: Validated config.
@@ -314,24 +353,49 @@ def make_figures(
         reliability_path: ``reliability.csv``.
         out_dir: Figure directory.
         n_images: Evaluation-set size (subtitle only).
+        temperature: Fitted T (labels only).
 
     Returns:
         Paths of the written figures.
     """
     p = cfg["plots"]
     summary, reliability = read_csv(summary_path), read_csv(reliability_path)
-    ext = p["format"]
+    ext, dpi = p["format"], p["dpi"]
     corruptions = cfg["corruptions"]["names"]
-    return [
+    sub = f" · {n_images} COCO val2017 images" if n_images else ""
+    metric = p["severity_metric"]
+    out = [
         plot_metric_vs_severity(
             summary,
-            p["severity_scopes"],
-            p["severity_metric"],
+            [Panel(sc, metric, SCOPE_TITLES.get(sc, sc)) for sc in p["severity_scopes"]],
             corruptions,
-            out_dir / f"fig1_{p['severity_metric']}_vs_severity.{ext}",
-            p["dpi"],
-            n_images,
-        ),
+            out_dir / f"fig1_{metric}_vs_severity.{ext}",
+            dpi,
+            f"{METRIC_TITLES.get(metric, metric)} under camera corruptions "
+            f"(Faster R-CNN v2, shaded: 95% bootstrap CI{sub})",
+        )
+    ]
+    calibrated = any("dece_cal_t" in k for k in summary[0])
+    if calibrated:
+        before = p["calibration_metric"]
+        after = before.replace("dece_t", "dece_cal_t")
+        t_txt = f" (T = {temperature:.2f})" if temperature else ""
+        scope = p["calibration_scope"]
+        out.append(
+            plot_metric_vs_severity(
+                summary,
+                [
+                    Panel(scope, before, "Before scaling (raw scores)"),
+                    Panel(scope, after, f"After temperature scaling{t_txt}"),
+                ],
+                corruptions,
+                out_dir / f"fig2_{before}_before_after.{ext}",
+                dpi,
+                f"{METRIC_TITLES.get(before, before)}, {SCOPE_TITLES.get(scope, scope)}: "
+                f"T fitted on clean data, applied under corruption (shaded: 95% CI{sub})",
+            )
+        )
+    out.append(
         plot_reliability(
             reliability,
             summary,
@@ -339,6 +403,9 @@ def make_figures(
             p["reliability_scope"],
             p["reliability_threshold"],
             out_dir / f"fig3_reliability_{p['reliability_scope']}.{ext}",
-            p["dpi"],
-        ),
-    ]
+            dpi,
+            rows=(False, True) if calibrated else (False,),
+            temperature=temperature,
+        )
+    )
+    return out

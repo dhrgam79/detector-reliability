@@ -105,6 +105,7 @@ def test_sweep_end_to_end_with_fake_detector(tmp_path, monkeypatch):
         summary_csv=str(tmp_path / "out" / "summary.csv"),
         reliability_csv=str(tmp_path / "out" / "reliability.csv"),
         run_info=str(tmp_path / "out" / "run_info.json"),
+        calibration_json=str(tmp_path / "out" / "calibration.json"),
     )
     img_dir = tmp_path / "coco" / cfg["paths"]["images"]
     img_dir.mkdir(parents=True)
@@ -150,6 +151,10 @@ def test_sweep_end_to_end_with_fake_detector(tmp_path, monkeypatch):
     info = json.loads((out / "run_info.json").read_text())
     assert info["conditions_total"] == 4 and len(info["conditions_inferred"]) == 4  # calib + 3
     assert (out / "reliability.csv").exists()
+    calib = json.loads((out / "calibration.json").read_text())
+    assert calib["fit_split"] == "calibration" and calib["n_detections"] > 0
+    assert info["temperature"] == calib["temperature"]
+    assert "dece_cal_t0.3" in rows[0] and "cal_gain_t0.3" in rows[0]
 
     cli.sweep(cfg, None)  # rerun: everything from cache
     assert json.loads((out / "run_info.json").read_text())["conditions_inferred"] == []
