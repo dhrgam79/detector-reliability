@@ -1,10 +1,10 @@
 {
- "finished_utc": "2026-11-15T20:54:39+00:00",
+ "finished_utc": "2026-11-16T06:38:10+00:00",
  "seconds": {
-  "data": 1.1,
-  "inference": 2079.6,
-  "metrics": 333.2,
-  "total": 2413.9
+  "data": 26.4,
+  "inference": 1972.6,
+  "metrics": 326.3,
+  "total": 2325.3
  },
  "conditions_inferred": [
   "calibration/clean",
@@ -40,6 +40,7 @@
  "bootstrap_resamples": 1000,
  "device": "Tesla T4",
  "amp": true,
+ "temperature": 1.042989042657923,
  "versions": {
   "python": "3.13.16",
   "torch": "2.14.1+cu130",

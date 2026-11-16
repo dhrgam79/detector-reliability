@@ -117,10 +117,14 @@ pytest                           # CPU only; no network, data or model weights n
 Figures can be regenerated from the committed CSVs alone with `detrel plots`. All parameters live in
 [`configs/default.yaml`](configs/default.yaml).
 
-Runtime on a free Colab T4: 40.2 min for the full sweep (34.7 min inference for 27 conditions,
-5.6 min metrics), recorded in [`results/run_info.json`](results/run_info.json); the COCO images were
-already on disk for that run. The [Colab notebook](notebooks/colab_quickstart.ipynb) runs the whole
-pipeline from a fresh clone.
+Runtime on a free Colab T4, from a fresh clone with nothing cached: **39.1 min** for
+`run_all.py` (data download 26 s, inference 32.9 min for 27 conditions, metrics 5.4 min, figures
+2 s), plus about a minute for `pip install`; recorded in [`results/run_info.json`](results/run_info.json).
+
+**Reproducibility check.** Two independent full runs (separate Colab sessions, one with data and
+detections cached on Drive, one from a fresh clone) produced **byte-identical** `summary.csv`,
+`reliability.csv` and `calibration.json`. The [Colab notebook](notebooks/colab_quickstart.ipynb)
+runs the whole pipeline from a fresh clone.
 
 ## Limitations
 

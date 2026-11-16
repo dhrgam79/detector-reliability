@@ -210,6 +210,17 @@ map, both out of v1 scope (brief §3).
 | D79 | **Ship v1.0 as specified**: temperature scaling only, SOTIF narrative as written (two failure modes; temperature scaling ineffective with structural reason). **Platt scaling deferred to v1.1** (README "Next steps" item 1) | Author's call: finish a complete, honest v1.0 first; the README already explains why a bias term is the next step |
 | D80 | Tag `v1.0` only after the notebook has run end to end from a fresh clone on a T4 | The Colab badge is the first thing a reviewer clicks; it must be verified, and it gives the README its measured fresh-run time |
 
+## 2026-11-16 — Fresh-clone verification (definition of done)
+
+Colab notebook run end to end on a T4 from a fresh clone (no Drive cache): `run_all.py` 39.1 min wall
+(sweep 38.8 min: data 26 s, inference 1973 s for all 27 conditions, metrics 326 s). `summary.csv`,
+`reliability.csv` and `calibration.json` are **byte-identical** to the earlier run.
+
+| # | Decision | Rationale |
+|---|---|---|
+| D81 | `run_info.json` replaced by the fresh-clone run; README states its runtime and the byte-identical reproduction | Supersedes D73: the runtime claim now describes an honest from-scratch run |
+| D82 | Tag `v1.0` | All definition-of-done items met: one-command reproduction, CI green, tests on matching/metrics/calibration, README with real numbers + 3 figures + SOTIF + limitations, notebook < 45 min on T4, no committed data/weights |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.
