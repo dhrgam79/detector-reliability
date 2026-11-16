@@ -203,6 +203,13 @@ map, both out of v1 scope (brief §3).
 | D77 | README frames results as two hazardous behaviours (confident errors vs silent misses) and states that temperature scaling did not help, with the reason | D58, D72 |
 | D78 | Colab notebook runs the full pipeline from a fresh clone; the Drive cache is optional and off by default | Definition of done requires a fresh-clone end-to-end run on a T4 |
 
+## 2026-11-16 — Scope for v1.0
+
+| # | Decision | Rationale |
+|---|---|---|
+| D79 | **Ship v1.0 as specified**: temperature scaling only, SOTIF narrative as written (two failure modes; temperature scaling ineffective with structural reason). **Platt scaling deferred to v1.1** (README "Next steps" item 1) | Author's call: finish a complete, honest v1.0 first; the README already explains why a bias term is the next step |
+| D80 | Tag `v1.0` only after the notebook has run end to end from a fresh clone on a T4 | The Colab badge is the first thing a reviewer clicks; it must be verified, and it gives the README its measured fresh-run time |
+
 ## Open risks
 - Runtime budget: corruption (~10-12 min on Colab CPU) + inference must fit in 30 min. Step 4 should overlap corruption with GPU inference (DataLoader workers) or cache corrupted images.
 - Default config path resolves relative to the repo checkout; package is meant to be run from a clone, not a wheel install.
